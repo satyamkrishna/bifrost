@@ -807,10 +807,10 @@ func LoadConfig(ctx context.Context, configDirPath string) (*Config, error) {
 		if err := json.Unmarshal(data, &schema); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
 		}
-		if schema["$schema"] != "https://www.getbifrost.ai/schema" {
+		if schemaURL, ok := schema["$schema"].(string); !ok || strings.TrimSpace(schemaURL) == "" {
 			yellowColor := "\033[33m"
 			resetColor := "\033[0m"
-			message := fmt.Sprintf("config file %s does not include \"$schema\":\"https://www.getbifrost.ai/schema\". Use our official schema file to avoid unexpected behavior.", absConfigFilePath)
+			message := fmt.Sprintf("config file %s does not include a \"$schema\" location. Set it to %q or your mirrored schema location to enable IDE validation.", absConfigFilePath, DefaultConfigSchemaURL)
 			boxWidth := 100
 			contentWidth := boxWidth - 4
 			words := strings.Fields(message)
@@ -839,7 +839,12 @@ func LoadConfig(ctx context.Context, configDirPath string) (*Config, error) {
 			}
 			fmt.Printf("%s╚%s╝%s\n", yellowColor, strings.Repeat("═", boxWidth-2), resetColor)
 			fmt.Println("")
-			logger.Warn("config file %s does not include \"$schema\":\"https://www.getbifrost.ai/schema\". Use our official schema file to avoid unexpected behavior.", absConfigFilePath)
+			logger.Warn("config file %s does not include a \"$schema\" location", absConfigFilePath)
+		}
+		// Validate config file against the schema. Soft failure: log and continue,
+		// so an unreachable schema location never blocks startup.
+		if err := ValidateConfigSchema(data); err != nil {
+			logger.Error("config validation failed: %v. You can find the official schema at %s. Some features may not work as expected unless you fix the config file.", err, DefaultConfigSchemaURL)
 		}
 		// Parse config data
 		if err := json.Unmarshal(data, &configData); err != nil {

@@ -16,6 +16,7 @@ Official Helm charts for deploying [Bifrost](https://github.com/maximhq/bifrost)
 - Added `group_traces_by_session` to the OTEL and Datadog plugin configs. When `true`, requests sharing the same `x-bf-session-id` header are grouped into a single trace. An inbound W3C `traceparent` always takes priority. Defaults to `false`.
 - Added `storage.configStore.vaultStore` to `values.yaml` with full commented-out examples for all three backends: `aws-secrets-manager`, `gcp-secret-manager`, and `hashicorp-vault`. Set `accessMode: read_and_write` to automatically store plaintext config fields as vault secrets; `read_only` (default) only resolves existing `vault.<path>` references.
 - `dns_names` in cluster discovery config now accepts `env.VAR_NAME` references in addition to literal hostnames, consistent with how other secret-bearing fields work across the chart.
+- Added `bifrost.schemaUrl` to override the generated `config.json` `$schema` location for isolated deployments. It accepts HTTP(S), `file://`, or filesystem paths. When set, it is also exported as `BIFROST_SCHEMA_URL` in the pod; when empty (default), the env var is not injected and the public schema URL is used.
 
 ### 2.1.24
 

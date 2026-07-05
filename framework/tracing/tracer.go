@@ -18,13 +18,13 @@ import (
 // framework's TraceStore implementation.
 // It also embeds a streaming.Accumulator for centralized streaming chunk accumulation.
 type Tracer struct {
-	store              *TraceStore
-	accumulator        *streaming.Accumulator
-	pricingManager     *modelcatalog.ModelCatalog
-	logger             schemas.Logger
-	obsPlugins         atomic.Pointer[[]schemas.ObservabilityPlugin]
-	cachedHdrPatterns  atomic.Pointer[[]string]
-	flushWG            sync.WaitGroup
+	store             *TraceStore
+	accumulator       *streaming.Accumulator
+	pricingManager    *modelcatalog.ModelCatalog
+	logger            schemas.Logger
+	obsPlugins        atomic.Pointer[[]schemas.ObservabilityPlugin]
+	cachedHdrPatterns atomic.Pointer[[]string]
+	flushWG           sync.WaitGroup
 }
 
 // NewTracer creates a new Tracer wrapping the given TraceStore.
@@ -609,6 +609,7 @@ func (t *Tracer) ProcessStreamingChunk(ctx *schemas.BifrostContext, traceID stri
 		accResult.TokenUsage = processedResp.Data.TokenUsage
 		accResult.Cost = processedResp.Data.Cost
 		accResult.CacheDebug = processedResp.Data.CacheDebug
+		accResult.GuardrailDebug = processedResp.Data.GuardrailDebug
 		accResult.ErrorDetails = processedResp.Data.ErrorDetails
 		accResult.AudioOutput = processedResp.Data.AudioOutput
 		accResult.TranscriptionOutput = processedResp.Data.TranscriptionOutput

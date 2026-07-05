@@ -1485,6 +1485,62 @@ func TestCalculateCost_SemanticCacheHitNoEmbeddingInfo(t *testing.T) {
 	assert.Equal(t, 0.0, cost)
 }
 
+// TestCalculateCostAddsGuardrailJudgeCost verifies judge cost is additive to the main request.
+func TestCalculateCostAddsGuardrailJudgeCost(t *testing.T) {
+	s := testStoreWithPricing(map[string]configstoreTables.TableModelPricing{
+		makeKey("gpt-4o", "openai", "chat"): {
+			Model: "gpt-4o", Provider: "openai", Mode: "chat",
+			InputCostPerToken: bifrost.Ptr(0.000001), OutputCostPerToken: bifrost.Ptr(0.000002),
+		},
+		makeKey("claude-judge", "anthropic", "chat"): {
+			Model: "claude-judge", Provider: "anthropic", Mode: "chat",
+			InputCostPerToken: bifrost.Ptr(0.000003), OutputCostPerToken: bifrost.Ptr(0.000004),
+		},
+	})
+	resp := makeChatResponse(schemas.OpenAI, "gpt-4o", &schemas.BifrostLLMUsage{
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		TotalTokens:      150,
+	})
+	resp.GetExtraFields().GuardrailDebug = &schemas.BifrostGuardrailDebug{
+		JudgeCalls: []schemas.BifrostGuardrailJudgeCall{{
+			JudgeProvider:    schemas.Anthropic,
+			JudgeModel:       "claude-judge",
+			PromptTokens:     20,
+			CompletionTokens: 5,
+			TotalTokens:      25,
+		}},
+	}
+
+	// Main: 100*0.000001 + 50*0.000002 = 0.0002.
+	// Judge: 20*0.000003 + 5*0.000004 = 0.00008.
+	assert.InDelta(t, 0.00028, s.CalculateCost(resp, nil), 1e-12)
+}
+
+// TestCalculateCostDirectCacheHitStillBillsGuardrail verifies cache hits do not hide judge spend.
+func TestCalculateCostDirectCacheHitStillBillsGuardrail(t *testing.T) {
+	s := testStoreWithPricing(map[string]configstoreTables.TableModelPricing{
+		makeKey("gpt-4o-mini", "openai", "chat"): {
+			Model: "gpt-4o-mini", Provider: "openai", Mode: "chat",
+			InputCostPerToken: bifrost.Ptr(0.000001), OutputCostPerToken: bifrost.Ptr(0.000002),
+		},
+	})
+	hitType := "direct"
+	resp := makeChatResponse(schemas.OpenAI, "cached-model", nil)
+	resp.GetExtraFields().CacheDebug = &schemas.BifrostCacheDebug{CacheHit: true, HitType: &hitType}
+	resp.GetExtraFields().GuardrailDebug = &schemas.BifrostGuardrailDebug{
+		JudgeCalls: []schemas.BifrostGuardrailJudgeCall{{
+			JudgeProvider:    schemas.OpenAI,
+			JudgeModel:       "gpt-4o-mini",
+			PromptTokens:     10,
+			CompletionTokens: 5,
+			TotalTokens:      15,
+		}},
+	}
+
+	assert.InDelta(t, 0.00002, s.CalculateCost(resp, nil), 1e-12)
+}
+
 // =========================================================================
 // 11. CalculateCost integration — end-to-end
 // =========================================================================

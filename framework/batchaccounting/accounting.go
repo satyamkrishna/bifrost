@@ -298,7 +298,7 @@ func summarizeResults(pricing PricingManager, req Request) (*Summary, error) {
 
 func extractUsage(provider schemas.ModelProvider, fallbackModel string, item schemas.BatchResultItem) (extractedUsage, error) {
 	switch provider {
-	case schemas.OpenAI, schemas.Bedrock:
+	case schemas.OpenAI, schemas.Bedrock, schemas.Gemini:
 		return extractResponseBodyUsage(fallbackModel, item)
 	case schemas.Anthropic:
 		return extractAnthropicUsage(fallbackModel, item)

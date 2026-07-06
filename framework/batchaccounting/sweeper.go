@@ -196,7 +196,7 @@ func isTerminalStatus(status schemas.BatchStatus) bool {
 
 func isSupportedProvider(provider schemas.ModelProvider) bool {
 	switch provider {
-	case schemas.OpenAI, schemas.Anthropic, schemas.Bedrock:
+	case schemas.OpenAI, schemas.Anthropic, schemas.Bedrock, schemas.Gemini:
 		return true
 	default:
 		return false

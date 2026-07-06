@@ -2,6 +2,14 @@ import { ColumnConfigDropdown, type ColumnConfigEntry } from "@/components/table
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { DateTimePickerWithRange } from "@/components/ui/datePickerWithRange";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTimezonePreference } from "@/lib/hooks/useTimezonePreference";
@@ -10,9 +18,12 @@ import { getActiveTempToken } from "@/lib/store/apis/tempToken";
 import type { LogFilters as LogFiltersType, RecalculateCostProgress, RecalculateCostResponse } from "@/lib/types/logs";
 import { getApiBaseUrl } from "@/lib/utils/port";
 import { getRangeForPeriod, TIME_PERIODS } from "@/lib/utils/timeRange";
-import { Calculator, MoreVertical, Radio, RefreshCw, Search } from "lucide-react";
+import { formatCompactNumber } from "@/lib/utils/numbers";
+import { Calculator, Check, MoreVertical, Radio, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+type RecalculateCostMode = "missing" | "all";
 
 interface LogsHeaderViewProps {
 	filters: LogFiltersType;
@@ -25,6 +36,8 @@ interface LogsHeaderViewProps {
 	onPollToggle: (enabled: boolean) => void;
 	period: string;
 	onPeriodChange: (period?: string, from?: Date, to?: Date) => void;
+	/** Total logs matching the current filters/time window (stats.total_requests) */
+	totalLogs: number;
 	/** Column config for the ColumnConfigDropdown */
 	columnEntries: ColumnConfigEntry[];
 	columnLabels: Record<string, string>;
@@ -43,12 +56,15 @@ export function LogsHeaderView({
 	onPollToggle,
 	period,
 	onPeriodChange,
+	totalLogs,
 	columnEntries,
 	columnLabels,
 	onToggleColumnVisibility,
 	onResetColumns,
 }: LogsHeaderViewProps) {
 	const [openMoreActionsPopover, setOpenMoreActionsPopover] = useState(false);
+	const [recalcDialogOpen, setRecalcDialogOpen] = useState(false);
+	const [recalcMode, setRecalcMode] = useState<RecalculateCostMode>("missing");
 	const [localSearch, setLocalSearch] = useState(filters.content_search || "");
 	const searchTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 	const filtersRef = useRef<LogFiltersType>(filters);
@@ -78,9 +94,10 @@ export function LogsHeaderView({
 	}, []);
 
 	const handleRecalculateCosts = useCallback(async () => {
-		setOpenMoreActionsPopover(false);
+		setRecalcDialogOpen(false);
+		const missingCostOnly = recalcMode === "missing";
 		const toastId = "logs-recalculate-costs";
-		const recalculatePromise = recalculateCostsWithProgress(filters, (progress) => {
+		const recalculatePromise = recalculateCostsWithProgress(filters, missingCostOnly, (progress) => {
 			const total = progress.total_matched || 0;
 			const processed = Math.min(progress.processed, total || progress.processed);
 			toast.loading("Recalculating log costs...", {
@@ -108,7 +125,7 @@ export function LogsHeaderView({
 			await fetchLogs();
 			await fetchStats();
 		} catch {}
-	}, [filters, fetchLogs, fetchStats]);
+	}, [filters, recalcMode, fetchLogs, fetchStats]);
 
 	const handleSearchChange = useCallback(
 		(value: string) => {
@@ -190,11 +207,17 @@ export function LogsHeaderView({
 				<PopoverContent className="bg-accent w-[250px] p-2" align="end">
 					<Command>
 						<CommandList>
-							<CommandItem className="hover:bg-accent/50 cursor-pointer" onSelect={handleRecalculateCosts}>
+							<CommandItem
+								className="hover:bg-accent/50 cursor-pointer"
+								onSelect={() => {
+									setOpenMoreActionsPopover(false);
+									setRecalcDialogOpen(true);
+								}}
+							>
 								<Calculator className="text-muted-foreground size-4" />
 								<div className="flex flex-col">
 									<span className="text-sm">Recalculate costs</span>
-									<span className="text-muted-foreground text-xs">For all logs that don't have a cost</span>
+									<span className="text-muted-foreground text-xs">Recompute cost for logs in this view</span>
 								</div>
 							</CommandItem>
 						</CommandList>
@@ -207,12 +230,95 @@ export function LogsHeaderView({
 				onToggleVisibility={onToggleColumnVisibility}
 				onReset={onResetColumns}
 			/>
+
+			<Dialog open={recalcDialogOpen} onOpenChange={setRecalcDialogOpen}>
+				<DialogContent className="sm:max-w-[440px]">
+					<DialogHeader>
+						<DialogTitle>Recalculate costs</DialogTitle>
+						<DialogDescription>
+							The current time window and filters will be applied. Choose which logs to recompute cost for.
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="flex flex-col gap-2 py-1">
+						<RecalculateModeOption
+							selected={recalcMode === "missing"}
+							onSelect={() => setRecalcMode("missing")}
+							title="Missing cost only"
+							description="Only recompute logs that don't have a cost yet."
+						/>
+						<RecalculateModeOption
+							selected={recalcMode === "all"}
+							onSelect={() => setRecalcMode("all")}
+							title="All selected logs"
+							description="Recompute cost for every log matching the current filters."
+						/>
+					</div>
+
+					<p className="text-muted-foreground text-xs">
+						{recalcMode === "all" ? (
+							<>
+								<span className="text-foreground font-medium">{formatCompactNumber(totalLogs)}</span> logs match the current filters and will be
+								recalculated.
+							</>
+						) : (
+							"Logs in the current window that don't have a cost yet will be recalculated."
+						)}
+					</p>
+
+					<DialogFooter>
+						<Button variant="outline" size="sm" onClick={() => setRecalcDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button size="sm" onClick={handleRecalculateCosts}>
+							<Calculator className="size-4" />
+							Recalculate
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
+	);
+}
+
+function RecalculateModeOption({
+	selected,
+	onSelect,
+	title,
+	description,
+}: {
+	selected: boolean;
+	onSelect: () => void;
+	title: string;
+	description: string;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onSelect}
+			aria-pressed={selected}
+			className={`flex items-start gap-3 rounded-md border p-3 text-left transition-colors ${
+				selected ? "border-primary bg-primary/5" : "border-input hover:bg-accent/50"
+			}`}
+		>
+			<span
+				className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
+					selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"
+				}`}
+			>
+				{selected && <Check className="size-3" />}
+			</span>
+			<span className="flex flex-col gap-0.5">
+				<span className="text-sm font-medium">{title}</span>
+				<span className="text-muted-foreground text-xs">{description}</span>
+			</span>
+		</button>
 	);
 }
 
 async function recalculateCostsWithProgress(
 	filters: LogFiltersType,
+	missingCostOnly: boolean,
 	onProgress: (progress: RecalculateCostProgress) => void,
 ): Promise<RecalculateCostResponse> {
 	const headers: Record<string, string> = {
@@ -228,7 +334,8 @@ async function recalculateCostsWithProgress(
 		method: "POST",
 		credentials: "include",
 		headers,
-		body: JSON.stringify({ filters }),
+		// Override the page's own missing_cost_only filter with the mode chosen in the dialog.
+		body: JSON.stringify({ filters: { ...filters, missing_cost_only: missingCostOnly } }),
 	});
 
 	if (!response.ok) {

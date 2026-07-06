@@ -1688,7 +1688,9 @@ func (h *LoggingHandler) recalculateLogCosts(ctx *fasthttp.RequestCtx) {
 			filters.EndTime = end
 		}
 	}
-	filters.MissingCostOnly = true
+	// MissingCostOnly is driven by the request payload:
+	//   true  -> only logs that currently have no cost are recalculated
+	//   false -> every log matching the filters/time window is recalculated
 
 	if strings.Contains(string(ctx.Request.Header.Peek("Accept")), "text/event-stream") {
 		h.streamRecalculateLogCosts(ctx, filters, limit)

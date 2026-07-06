@@ -52,9 +52,6 @@ func NewSweeper(store SweepStore, pricing PricingManager, fetcher BatchResultFet
 	if config.Limit <= 0 {
 		config.Limit = defaultSweepLimit
 	}
-	if config.Provider == "" {
-		config.Provider = schemas.OpenAI
-	}
 	if config.ClaimedBy == "" {
 		config.ClaimedBy = "batch-sweeper"
 	}
@@ -102,7 +99,7 @@ func (s *Sweeper) SweepOnce(ctx context.Context) {
 }
 
 func (s *Sweeper) sweepJob(ctx context.Context, job *logstore.BatchJob, now time.Time) {
-	if job == nil || schemas.ModelProvider(job.Provider) != schemas.OpenAI {
+	if job == nil || !isSupportedProvider(schemas.ModelProvider(job.Provider)) {
 		return
 	}
 	locked, err := s.acquireProviderPollLease(job)
@@ -191,6 +188,15 @@ func marshalString(value any) string {
 func isTerminalStatus(status schemas.BatchStatus) bool {
 	switch status {
 	case schemas.BatchStatusCompleted, schemas.BatchStatusFailed, schemas.BatchStatusExpired, schemas.BatchStatusCancelled, schemas.BatchStatusEnded, schemas.BatchStatusDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedProvider(provider schemas.ModelProvider) bool {
+	switch provider {
+	case schemas.OpenAI, schemas.Anthropic, schemas.Bedrock:
 		return true
 	default:
 		return false
